@@ -1,3 +1,5 @@
+//Not currently in use. uses old libraries
+
 const { createAudioResource } = require('@discordjs/voice');
 const { CustomPlugin } = require('distube');
 

@@ -1,4 +1,4 @@
 module.exports = {
-    jarviradio: "http://stream.jarviradio.fi:8000/stream",
-    sandelsradio: "http://stream.sandelsradio.fi:8000/stream",
+    radio3: "possible stream adresses",
+    radio2: "possible stream adresses",
 };
