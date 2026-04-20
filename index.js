@@ -36,9 +36,9 @@ client.lavalink = new LavalinkManager({
         {
             id: "localnode",
             host: process.env.LAVALINK_HOST || "localhost",
-            port: parseInt(process.env.LAVALINK_PORT) || 2333,
-                                      authorization: process.env.LAVALINK_PASSWORD || "paskahomo",
-                                      secure: process.env.LAVALINK_SECURE === "true" || false,
+            port: parseInt(process.env.LAVALINK_PORT),
+                                      authorization: process.env.LAVALINK_PASSWORD,
+                                      secure: process.env.LAVALINK_SECURE === "true",
         }
     ],
     // FIX 1: Updated sendToShard for newer lavalink-client versions

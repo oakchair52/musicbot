@@ -9,3 +9,4 @@ logs/
 *.bak
 #youTube plugins
 plugins/*.jar
+application.yaml
