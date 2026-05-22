@@ -4,7 +4,6 @@ const path = require("path");
 const { Client, GatewayIntentBits, EmbedBuilder, Collection } = require("discord.js");
 const axios = require("axios");
 
-// LUAVALINK
 const { LavalinkManager } = require('lavalink-client');
 
 const client = new Client({
@@ -27,21 +26,19 @@ module.exports = {
     setStatus: function(newStatus) { radioplay = newStatus; }
 };
 
-const IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+const IDLE_TIMEOUT = 5 * 60 * 1000; 
 const idleTimers = new Map();
 
-// LAVALINK
 client.lavalink = new LavalinkManager({
     nodes: [
         {
             id: "localnode",
             host: process.env.LAVALINK_HOST || "localhost",
             port: parseInt(process.env.LAVALINK_PORT),
-                                      authorization: process.env.LAVALINK_PASSWORD,
-                                      secure: process.env.LAVALINK_SECURE === "true",
+            authorization: process.env.LAVALINK_PASSWORD,
+            secure: process.env.LAVALINK_SECURE === "true",
         }
     ],
-    // FIX 1: Updated sendToShard for newer lavalink-client versions
     sendToShard: (guildId, payload) => {
         const guild = client.guilds.cache.get(guildId);
         if (guild) guild.shard.send(payload);
@@ -53,7 +50,6 @@ client.lavalink = new LavalinkManager({
 client.once("ready", async () => {
     console.log("Bot is ready");
 
-    // FIX 2: Pass the full client info object
     await client.lavalink.init({ id: client.user.id, username: client.user.username });
     console.log("Lavalink initialized!");
 
@@ -144,21 +140,19 @@ client.on("interactionCreate", async (interaction) => {
         }
     }
 });
+
 client.on("voiceStateUpdate", async (oldState, newState) => {
     console.log("Voice state update:", newState.guild.id, newState.channelId);
 
     const player = client.lavalink.players.get(oldState.guild.id);
     if (!player) return;
 
-    // Get the voice channel the bot is in
     const botChannel = oldState.guild.channels.cache.get(player.voiceChannelId);
     if (!botChannel) return;
 
-    // Count non-bot members in the channel
     const nonBotMembers = botChannel.members.filter(m => !m.user.bot);
     if (nonBotMembers.size > 0) return;
 
-    // Channel is empty — wait 30 seconds then leave if still empty
     setTimeout(async () => {
         const p = client.lavalink.players.get(oldState.guild.id);
         if (!p) return;
@@ -172,7 +166,6 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
         const textChannel = client.channels.cache.get(p.textChannelId);
         if (textChannel) textChannel.send("👋 Kaikki lähti — lähdin myös!").catch(() => {});
 
-        // Clear radio state so retry listener doesn't kick in
         p.isRadio = false;
         p.radioStation = null;
         p.radioRetried = false;
@@ -181,6 +174,7 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
         await p.destroy();
     }, 30 * 1000);
 });
+
 client.lavalink.on("trackError", (player, track, error) => {
     console.error("Track error:", error);
 });
@@ -189,15 +183,34 @@ client.lavalink.on("trackStuck", (player, track, threshold) => {
     console.warn("Track stuck:", track.info.title, threshold);
 });
 
-client.lavalink.on("trackEnd", async (player, track, reason) => {
-    console.log("Track ended, reason:", reason);
+client.lavalink.on("trackStart", async (player, track) => {
+    if (player.isRadio) return;
 
-    // Don't resume radio if track was replaced or stopped intentionally
+    const guildId = player.guildId;
+    if (idleTimers.has(guildId)) {
+        clearTimeout(idleTimers.get(guildId));
+        idleTimers.delete(guildId);
+    }
+
+    const channel = client.channels.cache.get(player.textChannelId);
+    if (!channel) return;
+
+    const embed = new EmbedBuilder()
+        .setColor("#00ff00")
+        .setTitle("soipi tämmä 🎶")
+        .setDescription(`**${track.info.title}**\n${track.info.author || "Tuntematon"}`)
+        .setThumbnail(track.info.artworkUrl || null);
+
+    channel.send({ embeds: [embed] }).catch(() => {});
+    console.log(track.info.title, " ", track.info.author);
+});
+
+client.lavalink.on("trackEnd", async (player, track, reason) => {
+    console.log(`Track ended, reason: ${reason}, isRadio: ${player.isRadio}, queueLength: ${player.queue.tracks.length}`);
+
     if (reason === "replaced" || reason === "stopped") return;
     if (player.isRadio) return;
     if (!player._resumeRadioStation) return;
-
-    // Only resume radio if queue is now empty
     if (player.queue.tracks.length > 0) return;
 
     const stationKey = player._resumeRadioStation;
@@ -210,64 +223,11 @@ client.lavalink.on("trackEnd", async (player, track, reason) => {
     await radioCommand.resumeRadio(player, stationKey, client);
 });
 
-// FIX 3: Add node connection logging to catch Lavalink connection issues
-client.lavalink.on("nodeConnect", (node) => {
-    console.log(`Lavalink node connected: ${node.id}`);
-});
-
-client.lavalink.on("nodeError", (node, error) => {
-    console.error(`Lavalink node error on ${node.id}:`, error);
-});
-
-client.lavalink.on("nodeDisconnect", (node, reason) => {
-    console.warn(`Lavalink node disconnected: ${node.id}`, reason);
-});
-client.on('shardDisconnect', (event, shardId) => {
-    console.log('Shard disconnected:', shardId, 'code:', event.code, 'reason:', event.reason);
-});
-
-client.on('shardError', (error, shardId) => {
-    console.error('Shard error:', shardId, error);
-});
-client.on("raw", (packet) => {
-    if (packet.t === "VOICE_SERVER_UPDATE") {
-        console.log("VOICE_SERVER_UPDATE:", JSON.stringify(packet.d));
-    }
-    if (packet.t === "VOICE_STATE_UPDATE" && packet.d.user_id === client.user.id) {
-        console.log("BOT VOICE_STATE_UPDATE:", JSON.stringify(packet.d));
-    }
-    client.lavalink?.sendRawData(packet);
-});
-// Track start
-client.lavalink.on("trackEnd", async (player, track, reason) => {
-    console.log("Track ended, reason:", reason, "isRadio:", player.isRadio, "resumeStation:", player._resumeRadioStation, "queueLength:", player.queue.tracks.length);
-
-    const guildId = player.guildId;
-
-    if (idleTimers.has(guildId)) {
-        clearTimeout(idleTimers.get(guildId));
-        idleTimers.delete(guildId);
-    }
-
-    const channel = client.channels.cache.get(player.textChannelId);
-    if (!channel) return;
-
-    const embed = new EmbedBuilder()
-    .setColor("#00ff00")
-    .setTitle("soipi tämmä 🎶")
-    .setDescription(`**${track.info.title}**\n${track.info.author || "Tuntematon"}`)
-    .setThumbnail(track.info.artworkUrl || null);
-
-    channel.send({ embeds: [embed] }).catch(() => {});
-    console.log(track.info.title, " ", track.info.author);
-});
-
-// Queue end
 client.lavalink.on("queueEnd", async (player) => {
     const channel = client.channels.cache.get(player.textChannelId);
     const guildId = player.guildId;
+    
     if (player._radioStopInProgress) return;
-
 
     if (player._resumeRadioStation) {
         const stationKey = player._resumeRadioStation;
@@ -289,4 +249,35 @@ client.lavalink.on("queueEnd", async (player) => {
         console.log(`Left VC in ${guildId} due to inactivity`);
     }, IDLE_TIMEOUT));
 });
+
+client.lavalink.on("nodeConnect", (node) => {
+    console.log(`Lavalink node connected: ${node.id}`);
+});
+
+client.lavalink.on("nodeError", (node, error) => {
+    console.error(`Lavalink node error on ${node.id}:`, error);
+});
+
+client.lavalink.on("nodeDisconnect", (node, reason) => {
+    console.warn(`Lavalink node disconnected: ${node.id}`, reason);
+});
+
+client.on('shardDisconnect', (event, shardId) => {
+    console.log('Shard disconnected:', shardId, 'code:', event.code, 'reason:', event.reason);
+});
+
+client.on('shardError', (error, shardId) => {
+    console.error('Shard error:', shardId, error);
+});
+
+client.on("raw", (packet) => {
+    if (packet.t === "VOICE_SERVER_UPDATE") {
+        console.log("VOICE_SERVER_UPDATE:", JSON.stringify(packet.d));
+    }
+    if (packet.t === "VOICE_STATE_UPDATE" && packet.d.user_id === client.user.id) {
+        console.log("BOT VOICE_STATE_UPDATE:", JSON.stringify(packet.d));
+    }
+    client.lavalink?.sendRawData(packet);
+});
+
 client.login(process.env.DISCORD_TOKEN);

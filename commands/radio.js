@@ -1,78 +1,33 @@
 const { EmbedBuilder } = require("discord.js");
+const STATIONS = require("../radioConfig.json");
 
-// ─────────────────────────────────────────────────────────────
-// Radio station definitions
-// If a stream URL stops working, update it here.
-// You can find stream URLs by:
-//   1. Opening the station's website and inspecting Network tab while it plays
-//   2. Searching "<station name> stream URL" on radio-browser.info
-// ─────────────────────────────────────────────────────────────
-const STATIONS = {
-    jarviradio: {
-        name: "Järviradio",
-        url: "https://jarviradio.radiotaajuus.fi:9000/jr",
-        emoji: "📻",
-        color: "#1e90ff",
-        thumbnail: "https://jarviradio.fi/player/img/jarviradio_player_logo.png",
-    },
-    sandelsradio: {
-        name: "Sandels Radio",
-        url: "https://radiosandels.radiotaajuus.fi:9050/radio",
-        emoji: "🎙️",
-        color: "#ff6600",
-        thumbnail: null,
-    },
-    uptempo: {
-        name: "UpTempo",
-        url: "http://shoutcast1.hardcoreradio.nl/",
-        emoji: "🤘",
-        color: "#ff0000",
-        thumbnail: "https://cdn-radiotime-logos.tunein.com/s7869d.png",
-    },
-};
-
-// How long to wait before retrying after a stream error/end (ms)
 const RETRY_DELAY = 5000;
 
-// ─────────────────────────────────────────────────────────────
-// Internal helper — search & play a station on an existing player.
-// Returns true on success, false on failure.
-// ─────────────────────────────────────────────────────────────
 async function playRadioStream(player, station, requester, client) {
-    // Use stored requester as fallback (e.g. during retries)
     const user = requester || player._radioRequester || null;
 
     const result = await player.search(
         { query: station.url, source: "http" },
         user
     );
-//console.log("[radio] loadType:", result?.loadType, "tracks:", result?.tracks?.length);
-//console.log("[radio] full result:", JSON.stringify(result, null, 2));
+
     if (!result || result.loadType === "error" || result.loadType === "empty" || !result.tracks[0]) {
         return false;
     }
 
     await player.play({ track: result.tracks[0] });
     player.isRadio = true;
-    player.radioStation = Object.keys(STATIONS).find(k => STATIONS[k] === station);
-    player.radioRetried = false; // reset retry flag on successful play
+    player.radioStation = Object.keys(STATIONS).find(k => STATIONS[k].name === station.name);
+    player.radioRetried = false; 
     return true;
-    
 }
 
-// ─────────────────────────────────────────────────────────────
-// Register Lavalink listeners for radio retry & disconnect logic.
-// Called once per client, guarded by a flag so it doesn't double-register.
-// ─────────────────────────────────────────────────────────────
 function registerRadioListeners(client) {
     if (client._radioListenersRegistered) return;
     client._radioListenersRegistered = true;
 
-    // Fired when a track ends (includes stream drops)
     client.lavalink.on("trackEnd", async (player, track, reason) => {
         if (!player.isRadio || !player.radioStation) return;
-
-        // "replaced" means we intentionally stopped it (e.g. /skip, new /radio call) — don't retry
         if (reason === "replaced" || reason === "stopped") return;
 
         const station = STATIONS[player.radioStation];
@@ -81,7 +36,6 @@ function registerRadioListeners(client) {
         const textChannel = client.channels.cache.get(player.textChannelId);
 
         if (player.radioRetried) {
-            // Already retried once — give up and leave
             console.log(`[radio] Stream failed twice for ${station.name} in ${player.guildId}, disconnecting.`);
             if (textChannel) {
                 textChannel.send(`📻 **${station.name}** yhteys katkeili liikaa — lähdettiin kanavalta.`).catch(() => {});
@@ -93,7 +47,6 @@ function registerRadioListeners(client) {
             return;
         }
 
-        // First failure — retry after a short delay
         console.log(`[radio] Stream ended unexpectedly for ${station.name}, retrying in ${RETRY_DELAY / 1000}s...`);
         if (textChannel) {
             textChannel.send(`📻 **${station.name}** yhteys katkesi, yritetään uudelleen ${RETRY_DELAY / 1000} sekunnin kuluttua...`).catch(() => {});
@@ -102,7 +55,6 @@ function registerRadioListeners(client) {
         player.radioRetried = true;
 
         setTimeout(async () => {
-            // Make sure player still exists and is still in radio mode
             const p = client.lavalink.players.get(player.guildId);
             if (!p || !p.isRadio || p.radioStation !== player.radioStation) return;
 
@@ -124,7 +76,6 @@ function registerRadioListeners(client) {
         }, RETRY_DELAY);
     });
 
-    // Also retry on trackError (Lavalink-level stream error)
     client.lavalink.on("trackError", async (player, track, error) => {
         if (!player.isRadio || !player.radioStation) return;
 
@@ -132,15 +83,11 @@ function registerRadioListeners(client) {
         if (!station) return;
 
         console.error(`[radio] trackError for ${station.name}:`, error);
-        // trackError is followed by a trackEnd event, so retry logic fires there.
-        // Nothing extra needed here — just log it.
     });
 }
 
 async function radio(interaction, options, client) {
     await interaction.deferReply();
-
-    // Register retry listeners the first time any /radio is used
     registerRadioListeners(client);
 
     const stationKey = options.getString("station");
@@ -150,7 +97,6 @@ async function radio(interaction, options, client) {
         return interaction.editReply({ content: "❌ Tuntematon radiokanava!", ephemeral: true });
     }
 
-    // Must be in a voice channel
     const voiceChannel = interaction.member?.voice?.channel;
     if (!voiceChannel) {
         return interaction.editReply({
@@ -159,7 +105,6 @@ async function radio(interaction, options, client) {
         });
     }
 
-    // Check bot permissions
     const permissions = voiceChannel.permissionsFor(interaction.guild.members.me);
     if (!permissions.has("Connect") || !permissions.has("Speak")) {
         return interaction.editReply({
@@ -169,7 +114,6 @@ async function radio(interaction, options, client) {
     }
 
     try {
-        // Get or create a Lavalink player
         let player = client.lavalink.players.get(interaction.guildId);
 
         if (!player) {
@@ -181,29 +125,23 @@ async function radio(interaction, options, client) {
                 selfMute: false,
             });
         } else {
-            // Move to user's channel if needed
             if (player.voiceChannelId !== voiceChannel.id) {
                 await player.setVoiceChannel(voiceChannel.id);
             }
-            // Update text channel so retry messages go to the right place
             player.textChannelId = interaction.channelId;
         }
 
-        // Connect to voice if not already connected
         if (!player.connected) {
             await player.connect();
         }
 
-        // Stop whatever is currently playing (music or previous radio) — reason = "replaced"
         await player.stopPlaying(true, false);
         player.queue.tracks.splice(0);
 
-        // Reset radio state before starting fresh
         player.isRadio = false;
         player.radioStation = null;
         player.radioRetried = false;
 
-        // Load and play the stream
         player._radioRequester = interaction.user;
         const success = await playRadioStream(player, station, interaction.user, client);
 
@@ -233,8 +171,8 @@ async function radio(interaction, options, client) {
             content: `❌ Virhe radion käynnistämisessä: ${error.message}`,
         });
     }
-    
-};
+}
+
 module.exports = radio;
 module.exports.resumeRadio = async function(player, stationKey, client) {
     const station = STATIONS[stationKey];

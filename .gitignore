@@ -10,3 +10,4 @@ logs/
 #youTube plugins
 plugins/*.jar
 application.yaml
+radioConfig.json
