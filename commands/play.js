@@ -56,12 +56,12 @@ module.exports = async (interaction, options, client) => {
     await player.play({ track: tracks[0] });
 
     if (tracks.length > 1) {
-        player.queue.add(tracks.slice(1));
+        player.queue.add(tracks.slice(1), 0);
     }
 
     return interaction.editReply({ embeds: [embed] });
 }
-        player.queue.add(tracks);
+        player.queue.add(tracks, 0);
         await interaction.editReply({ embeds: [embed] });
 
         if (!player.playing && !player.paused) {
