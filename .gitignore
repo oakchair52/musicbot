@@ -11,3 +11,6 @@ logs/
 plugins/*.jar
 application.yaml
 radioConfig.json
+*.db
+*.db-wal
+*.db-shm

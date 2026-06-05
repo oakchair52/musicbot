@@ -4,21 +4,19 @@ module.exports = async (interaction, options, client) => {
     const player = client.lavalink.players.get(interaction.guild.id);
 
     if (!player) {
-        return interaction.reply({ content: "❌ Ei mitään soi tällä hetkellä.", ephemeral: true });
+        return interaction.reply({ content: "❌ Nothing playing rn", ephemeral: true });
     }
 
     if (!player.playing && !player.paused) {
-        return interaction.reply({ content: "❌ Ei mitään soi just nyt.", ephemeral: true });
+        return interaction.reply({ content: "❌ Nothing playing rn", ephemeral: true });
     }
 
     const voiceChannel = interaction.member.voice.channel;
     if (!voiceChannel || voiceChannel.id !== player.voiceChannelId) {
-        return interaction.reply({ content: "❌ Sinun täytyy olla samassa äänikanavalla ku bot!", ephemeral: true });
+        return interaction.reply({ content: "❌ You gotta be in the same vc as the bot!", ephemeral: true });
     }
 
-    // If queue is empty after current song
     if (player.queue.tracks.length === 0) {
-        // Resume radio if one was playing before
         if (player._resumeRadioStation) {
             const stationKey = player._resumeRadioStation;
             player._resumeRadioStation = null;
@@ -28,11 +26,12 @@ module.exports = async (interaction, options, client) => {
             const radioCommand = require("./radio");
             await radioCommand.resumeRadio(player, stationKey, client);
 
-            return interaction.reply(`📻 Jono loppui! Jatketaan radiota...`);
+            return interaction.reply(`Queue's done! Back to radio...`);
         }
 
+        if (client._radioCleanup) client._radioCleanup();
         await player.destroy();
-        return interaction.reply("⏹️ Ei enempää biisejä jonossa – lopetin soiton ja lähdin kanavalta.");
+        return interaction.reply("No more songs in queue – dipped out of vc.");
     }
 
     try {
@@ -41,13 +40,13 @@ module.exports = async (interaction, options, client) => {
 
         const embed = new EmbedBuilder()
             .setColor("#ff9900")
-            .setTitle("⏭️ Biisi skipattu!")
-            .setDescription(`**${currentTrack.info.title}** ohitettu.`)
-            .setFooter({ text: `Skipattu käyttäjän ${interaction.user.username} toimesta` });
+            .setTitle("Song skipped!")
+            .setDescription(`**${currentTrack.info.title}** got skipped.`)
+            .setFooter({ text: `Skipped by ${interaction.user.username}` });
 
         await interaction.reply({ embeds: [embed] });
     } catch (error) {
         console.error("Skip command error:", error);
-        await interaction.reply({ content: "❌ Jotain meni vikaan skippauksessa. Kokeile uudestaan!", ephemeral: true });
+        await interaction.reply({ content: "❌ Skip failed. Try again!", ephemeral: true });
     }
 };

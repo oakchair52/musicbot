@@ -1,7 +1,5 @@
-//type racing game
-const { PermissionsBitField, } = require('discord.js');
-const Discord = require('discord.js');
-const { createCanvas, loadImage } = require('canvas')
+const { PermissionsBitField } = require('discord.js');
+const { createCanvas } = require('canvas')
 
 const typeraceCommand = async (interaction) => {
     const guild = interaction.guild;
@@ -9,20 +7,19 @@ const typeraceCommand = async (interaction) => {
     const raceString = generateRandomString();
     console.log(raceString);
 
-    //typeracr kanavan checkkaus
     const existingChannels = guild.channels.cache.filter(
         (channel) => channel.name === 'typerace-channel' && channel.type === 0
     );
 
     if (existingChannels.size > 0) {
-        await interaction.reply('A type race competition is already in progress. Please wait for it to finish.');
+        await interaction.reply('A typerace is already going on. Wait for it to end, brainlet.');
         return;
     }
 
     const channelOptions = {
         name: 'typerace-channel',
         type: 0,
-        topic: 'Type race competition channel!',
+        topic: 'Typerace channel!',
     };
 
 
@@ -41,24 +38,22 @@ const typeraceCommand = async (interaction) => {
         const raceImageBuffer = await generateRandomStringImage(raceString);
 
         const rulesMessage = await textChannel.send(`
-            
 
-            **RULES**: You have only 1 message.  
-            Who types and sends the correct text first, wins.
-            Each character error will result in +2 second penalty.
+            **RULES**: 1 message only.
+            First to type it correctly wins.
+            Each typo = +2s penalty.
 
-            **Type the following string:**
-            
+            **Type this:**
+
         `);
 
-        await interaction.reply(`Type /join and enter: ${textChannel}`);
+        await interaction.reply(`Type /join and go to ${textChannel}`);
 
         const scoreboard = {};
 
 
         let scoreboardMessageId = null;
 
-        //funktio jolla päivitetää scoreboard ja lähetetää viesti
         const updateScoreboardAndSendMessage = async () => {
 
             const sortedEntries = Object.entries(scoreboard).sort((a, b) => a[1] - b[1]);
@@ -87,7 +82,6 @@ const typeraceCommand = async (interaction) => {
         const messageListener = async (message, initialTime) => {
 
             if (message.channel.id === textChannel.id && !message.author.bot) {
-                //typeracist rolen poisto
                 const typeracistRole = guild.roles.cache.find(role => role.name === 'typeracist');
                 if (typeracistRole && message.member.roles.cache.has(typeracistRole.id)) {
                     try {
@@ -98,7 +92,6 @@ const typeraceCommand = async (interaction) => {
                     }
                 }
         
-                //viestien poisto
                 try {
                     await message.delete();
                     console.log(`Deleted message from ${message.author.username}.`);
@@ -117,7 +110,6 @@ const typeraceCommand = async (interaction) => {
                 console.log(`Race string: ${raceString}`);
                 console.log(`Similarity: ${similarity}`);
         
-                //samaanvertaisuuden checkkaus
                 if (similarity >= similarityThreshold) {
                     const elapsedTime = new Date() - initialTime;
                     const timeWithPenalty = elapsedTime + calculatePenalty(userMessage, raceString);
@@ -125,10 +117,8 @@ const typeraceCommand = async (interaction) => {
                     console.log(`${message.author.username} won the type race in ${timeWithPenalty / 1000} seconds!`);
                 
                     try {
-                        //scoreboard update
                         scoreboard[message.author.username] = timeWithPenalty;
-                        //voittaja viesti
-                        const winnerMessage = await textChannel.send(`${message.author} won the type race in ${timeWithPenalty / 1000} seconds!`);
+                        const winnerMessage = await textChannel.send(`${message.author} won the typerace in ${timeWithPenalty / 1000}s!`);
                 
                         setTimeout(async () => {
                             try {
@@ -138,7 +128,6 @@ const typeraceCommand = async (interaction) => {
                             }
                         }, 1000);
                 
-                        //scoreboard update ja sit lähetys
                         await updateScoreboardAndSendMessage();
                     } catch (error) {
                         console.error('Error sending winner message or updating scoreboard:', error);
@@ -147,7 +136,6 @@ const typeraceCommand = async (interaction) => {
             }
         };
 
-        //funktio jolla lasketaan 2 välisen stringin samaanvertaisuus
         function calculateSimilarity(str1, str2) {
 
             if (!str1 || !str2) {
@@ -179,7 +167,6 @@ const typeraceCommand = async (interaction) => {
 
             return 1 - matrix[len1 - 1][len2 - 1] / Math.max(len1 - 1, len2 - 1);
         }
-        //funktio jolla lasketaan virheet
         function calculatePenalty(str1, str2) {
             let penalty = 0;
 
@@ -188,7 +175,7 @@ const typeraceCommand = async (interaction) => {
 
             for (let i = 0; i < Math.min(str1.length, str2.length); i++) {
                 if (str1.charAt(i) !== str2.charAt(i)) {
-                    penalty += 2000; //jokasesta virheestä tulee +2 sekunttia
+                    penalty += 2000;
                 }
             }
 
@@ -199,10 +186,8 @@ const typeraceCommand = async (interaction) => {
 
         setTimeout(async () => {
             try {
-                //typeracist role hankkimine
                 const typeracistRole = guild.roles.cache.find(role => role.name === 'typeracist');
 
-                //channel oikeudet update
                 await textChannel.permissionOverwrites.set([
                     {
                         id: typeracistRole,
@@ -218,7 +203,7 @@ const typeraceCommand = async (interaction) => {
                 const initialTime=new Date();
 
                 await rulesMessage.edit(`
-                   Here:
+                    Go:
                     
                 `);
                 const { AttachmentBuilder } = require('discord.js')
@@ -251,12 +236,8 @@ const typeraceCommand = async (interaction) => {
                         }
                     }
                     if (winner) {
-                        // voittajan julistamis viesti
-                        //const generalChat = guild.channels.cache.find(channel => channel.name === 'general' && channel.type === 0);
                         const channel = interaction.channel;
-                        //if (generalChat) {
-                            await channel.send(`The winner of the type race is ${winner} with ${winningTime / 1000} seconds!`);
-                        //}
+                        await channel.send(`The winner is ${winner} with ${winningTime / 1000}s!`);
                     } else {
                         console.log('No winner found.');
                     }
@@ -271,7 +252,7 @@ const typeraceCommand = async (interaction) => {
 
     } catch (error) {
         console.error('Error creating text channel:', error);
-        await interaction.reply('Error creating text channel. Check bot permissions.');
+        await interaction.reply("Couldn't create channel. Check my perms, nerd.");
     }
 };
 
@@ -279,10 +260,9 @@ const generateRandomStringImage = async (raceString) => {
     const canvas = createCanvas(500, 200);
     const ctx = canvas.getContext('2d');
 
-    const maxWidth = 480; // maksimi leveys
-    const lineHeight = 25; // rivin korkeus 
+    const maxWidth = 480;
+    const lineHeight = 25;
 
-    // Function jolla kirjotettaa teksti canvassii
     function drawWrappedText(text, x, y, maxWidth, lineHeight) {
         const words = text.split(' ');
         let line = '';
@@ -310,7 +290,6 @@ const generateRandomStringImage = async (raceString) => {
     return buffer;
 };
 
-// Function jolla generoijaa randomi stringi
 const generateRandomString = () => {
     const strings = [
         'Why did the chicken join a band? Because it had the drumsticks!',

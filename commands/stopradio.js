@@ -4,11 +4,11 @@ module.exports = async function stopradio(interaction, options, client) {
     const player = client.lavalink.players.get(interaction.guildId);
 
     if (!player) {
-        return interaction.editReply({ content: "❌ En soita mitään!" });
+        return interaction.editReply({ content: "❌ Nothing's playing rn" });
     }
 
     if (!player.isRadio) {
-        return interaction.editReply({ content: "❌ Radio ei ole päällä!" });
+        return interaction.editReply({ content: "❌ Radio ain't on" });
     }
 
     player.isRadio = false;
@@ -19,5 +19,7 @@ module.exports = async function stopradio(interaction, options, client) {
     await player.stopPlaying(true, false);
     player.queue.tracks.splice(0);
 
-    return interaction.reply({ content: `⏹️ radio pysäytetty.` });
+    if (client._radioCleanup) client._radioCleanup();
+
+    return interaction.editReply({ content: `radio stopped.` });
 };

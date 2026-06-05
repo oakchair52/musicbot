@@ -2,7 +2,6 @@ require('dotenv').config();
 const fs = require("fs");
 const path = require("path");
 const { Client, GatewayIntentBits, EmbedBuilder, Collection } = require("discord.js");
-const axios = require("axios");
 
 const { LavalinkManager } = require('lavalink-client');
 
@@ -18,16 +17,10 @@ const client = new Client({
 });
 
 client.commands = new Collection();
-client.radioStatus = null;
-let radioplay = 0;
-
-module.exports = {
-    getStatus: function() { return radioplay; },
-    setStatus: function(newStatus) { radioplay = newStatus; }
-};
 
 const IDLE_TIMEOUT = 5 * 60 * 1000; 
 const idleTimers = new Map();
+const voiceLeaveTimers = new Map();
 
 client.lavalink = new LavalinkManager({
     nodes: [
@@ -57,39 +50,39 @@ client.once("ready", async () => {
         const commands = [
             {
                 name: "play",
-                description: "biisi yt/soundcloud",
+                description: "song from yt/soundcloud",
                 options: [
                     {
                         name: "query",
                         type: 3,
-                        description: "linkki tai hakusana",
+                        description: "link or search query",
                         required: true
                     }
                 ]
             },
-            { name: "stopradio", description: "Pysäytä radio" },
+            { name: "stopradio", description: "Stop the radio" },
             { name: "typerace", description: "Start a typeracer" },
-            { name: "join", description: "Join to typeracer" },
-            { name: "meme", description: "nauraa" },
+            { name: "join", description: "Join the typerace" },
+            { name: "meme", description: "generates a meme, kek" },
             {
                 name: "sää",
-                description: "Get the current weather for a specific city.",
-                options: [{ name: "city", type: 3, description: "The city", required: true }]
+                description: "Check the weather, nerd.",
+                options: [{ name: "city", type: 3, description: "City name", required: true }]
             },
+            { name: "skip", description: "Skips the current song" },
+            { name: "queue", description: "Shows the queue" },
             {
-                name: "toggleban",
-                description: "Toggle the League of Legends ban system on or off",
+                name: "pfp",
+                description: "Grab someone's profile pic",
                 options: [
                     {
-                        name: "status",
-                        type: 3,
-                        description: "on/off",
-                        required: true,
-                        choices: [{ name: "On", value: "on" }, { name: "Off", value: "off" }]
+                        name: "user",
+                        type: 6,
+                        description: "User to peek at (leave empty for your own)",
+                        required: false
                     }
                 ]
             },
-            { name: "skip", description: "Skippaa nykyisen biisin ja siirtyy seuraavaan" },
             {
                 name: "radio",
                 description: "Play a radio station",
@@ -97,13 +90,82 @@ client.once("ready", async () => {
                     {
                         name: "station",
                         type: 3,
-                        description: "The radio station to play",
+                        description: "Station name",
                         required: true,
                         choices: [
                             { name: "Järviradio", value: "jarviradio" },
                             { name: "Sandels Radio", value: "sandelsradio" },
                             { name: "UpTempo", value: "uptempo" }
                         ]
+                    }
+                ]
+            },
+            {
+                name: "playlist",
+                description: "Manage your playlists",
+                options: [
+                    {
+                        name: "create",
+                        type: 1,
+                        description: "Create a new playlist",
+                        options: [
+                            { name: "name", type: 3, description: "Playlist name", required: true }
+                        ]
+                    },
+                    {
+                        name: "delete",
+                        type: 1,
+                        description: "Delete a playlist",
+                        options: [
+                            { name: "name", type: 3, description: "Playlist name", required: true }
+                        ]
+                    },
+                    {
+                        name: "add",
+                        type: 1,
+                        description: "Add current song to a playlist",
+                        options: [
+                            { name: "name", type: 3, description: "Playlist name", required: true }
+                        ]
+                    },
+                    {
+                        name: "addsearch",
+                        type: 1,
+                        description: "Search and add a song without playing it",
+                        options: [
+                            { name: "name", type: 3, description: "Playlist name", required: true },
+                            { name: "query", type: 3, description: "Song name or link", required: true }
+                        ]
+                    },
+                    {
+                        name: "remove",
+                        type: 1,
+                        description: "Remove a track from a playlist",
+                        options: [
+                            { name: "name", type: 3, description: "Playlist name", required: true },
+                            { name: "position", type: 4, description: "Track number to remove", required: true }
+                        ]
+                    },
+                    {
+                        name: "view",
+                        type: 1,
+                        description: "View songs in a playlist",
+                        options: [
+                            { name: "name", type: 3, description: "Playlist name", required: true }
+                        ]
+                    },
+                    {
+                        name: "play",
+                        type: 1,
+                        description: "Play all songs from a playlist",
+                        options: [
+                            { name: "name", type: 3, description: "Playlist name", required: true }
+                        ]
+                    },
+                    {
+                        name: "list",
+                        type: 1,
+                        description: "List all your playlists"
                     }
                 ]
             }
@@ -135,7 +197,7 @@ client.on("interactionCreate", async (interaction) => {
         } catch (error) {
             console.error(`Error executing command ${commandName}:`, error);
             if (!interaction.replied && !interaction.deferred) {
-                await interaction.reply({ content: "Virhe komennon suorittamisessa!", ephemeral: true });
+                await interaction.reply({ content: "Command execution failed, kek", ephemeral: true });
             }
         }
     }
@@ -153,7 +215,11 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     const nonBotMembers = botChannel.members.filter(m => !m.user.bot);
     if (nonBotMembers.size > 0) return;
 
-    setTimeout(async () => {
+    if (voiceLeaveTimers.has(oldState.guild.id)) {
+        clearTimeout(voiceLeaveTimers.get(oldState.guild.id));
+    }
+
+    voiceLeaveTimers.set(oldState.guild.id, setTimeout(async () => {
         const p = client.lavalink.players.get(oldState.guild.id);
         if (!p) return;
 
@@ -164,15 +230,24 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
         if (!stillEmpty) return;
 
         const textChannel = client.channels.cache.get(p.textChannelId);
-        if (textChannel) textChannel.send("👋 Kaikki lähti — lähdin myös!").catch(() => {});
+        if (textChannel) textChannel.send("Everyone left — I'm out too").catch(() => {});
+
+        if (idleTimers.has(oldState.guild.id)) {
+            clearTimeout(idleTimers.get(oldState.guild.id));
+            idleTimers.delete(oldState.guild.id);
+        }
 
         p.isRadio = false;
         p.radioStation = null;
         p.radioRetried = false;
         p._resumeRadioStation = null;
 
+        if (client._radioCleanup) client._radioCleanup();
+
+        voiceLeaveTimers.delete(oldState.guild.id);
+
         await p.destroy();
-    }, 30 * 1000);
+    }, 30 * 1000));
 });
 
 client.lavalink.on("trackError", (player, track, error) => {
@@ -191,14 +266,18 @@ client.lavalink.on("trackStart", async (player, track) => {
         clearTimeout(idleTimers.get(guildId));
         idleTimers.delete(guildId);
     }
+    if (voiceLeaveTimers.has(guildId)) {
+        clearTimeout(voiceLeaveTimers.get(guildId));
+        voiceLeaveTimers.delete(guildId);
+    }
 
     const channel = client.channels.cache.get(player.textChannelId);
     if (!channel) return;
 
     const embed = new EmbedBuilder()
         .setColor("#00ff00")
-        .setTitle("soipi tämmä 🎶")
-        .setDescription(`**${track.info.title}**\n${track.info.author || "Tuntematon"}`)
+        .setTitle("Now playing")
+        .setDescription(`**${track.info.title}**\n${track.info.author || "Unknown"}`)
         .setThumbnail(track.info.artworkUrl || null);
 
     channel.send({ embeds: [embed] }).catch(() => {});
@@ -217,7 +296,7 @@ client.lavalink.on("trackEnd", async (player, track, reason) => {
     player._resumeRadioStation = null;
 
     const channel = client.channels.cache.get(player.textChannelId);
-    if (channel) channel.send(`📻 Jono loppui! Jatketaan radiota...`).catch(() => {});
+    if (channel) channel.send(`Queue ended! Going back to radio...`).catch(() => {});
 
     const radioCommand = require("./commands/radio");
     await radioCommand.resumeRadio(player, stationKey, client);
@@ -232,13 +311,13 @@ client.lavalink.on("queueEnd", async (player) => {
     if (player._resumeRadioStation) {
         const stationKey = player._resumeRadioStation;
         player._resumeRadioStation = null;
-        if (channel) channel.send(`📻 Jono loppui! Jatketaan radiota...`).catch(() => {});
+        if (channel) channel.send(`Queue ended! Going back to radio...`).catch(() => {});
         const radioCommand = require("./commands/radio");
         await radioCommand.resumeRadio(player, stationKey, client);
         return;
     }
 
-    if (channel) channel.send("📭 Jono loppui! Lisää lisää biisejä komennolla /play");
+    if (channel) channel.send("Queue's empty! Cop more songs with /play");
 
     if (idleTimers.has(guildId)) return;
     idleTimers.set(guildId, setTimeout(() => {
@@ -246,6 +325,7 @@ client.lavalink.on("queueEnd", async (player) => {
         if (!p || p.queue.tracks.length > 0) return;
         p.destroy();
         idleTimers.delete(guildId);
+        voiceLeaveTimers.delete(guildId);
         console.log(`Left VC in ${guildId} due to inactivity`);
     }, IDLE_TIMEOUT));
 });
@@ -271,13 +351,37 @@ client.on('shardError', (error, shardId) => {
 });
 
 client.on("raw", (packet) => {
-    if (packet.t === "VOICE_SERVER_UPDATE") {
-        console.log("VOICE_SERVER_UPDATE:", JSON.stringify(packet.d));
-    }
-    if (packet.t === "VOICE_STATE_UPDATE" && packet.d.user_id === client.user.id) {
-        console.log("BOT VOICE_STATE_UPDATE:", JSON.stringify(packet.d));
-    }
     client.lavalink?.sendRawData(packet);
+});
+
+process.on("SIGINT", async () => {
+    console.log("\nShutting down gracefully...");
+    for (const timer of idleTimers.values()) clearTimeout(timer);
+    for (const timer of voiceLeaveTimers.values()) clearTimeout(timer);
+    idleTimers.clear();
+    voiceLeaveTimers.clear();
+    for (const player of client.lavalink.players.values()) {
+        if (client._radioCleanup) client._radioCleanup();
+        await player.destroy();
+    }
+    await client.lavalink.destroy();
+    await client.destroy();
+    process.exit(0);
+});
+
+process.on("SIGTERM", async () => {
+    console.log("\nSIGTERM received, shutting down...");
+    for (const timer of idleTimers.values()) clearTimeout(timer);
+    for (const timer of voiceLeaveTimers.values()) clearTimeout(timer);
+    idleTimers.clear();
+    voiceLeaveTimers.clear();
+    for (const player of client.lavalink.players.values()) {
+        if (client._radioCleanup) client._radioCleanup();
+        await player.destroy();
+    }
+    await client.lavalink.destroy();
+    await client.destroy();
+    process.exit(0);
 });
 
 client.login(process.env.DISCORD_TOKEN);

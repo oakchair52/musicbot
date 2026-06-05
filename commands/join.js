@@ -10,7 +10,7 @@ const joinCommand = async (interaction) => {
 
 
     if (!textChannel) {
-        return interaction.reply('The typerace channel does not exist. It might not have been created yet.');
+        return interaction.reply("No typerace channel exists. It probably hasn't been created yet.");
     }
 
     let typeracistRole = guild.roles.cache.find(role => role.name === 'typeracist');
@@ -24,14 +24,14 @@ const joinCommand = async (interaction) => {
             });
         } catch (roleError) {
             console.error('Error creating typeracist role:', roleError);
-            return interaction.reply('Error creating typeracist role. Check bot permissions.');
+            return interaction.reply("Couldn't create typeracist role. Check perms.");
         }
     }
 
    
     try {
         await member.roles.add(typeracistRole);
-        interaction.reply(`**${member.user.username}** has joined the typerace!`);
+        interaction.reply(`**${member.user.username}** has entered the typerace!`);
 
 
     
@@ -54,7 +54,7 @@ const joinCommand = async (interaction) => {
         }, 60000); 
     } catch (addRoleError) {
         console.error('Error adding typeracist role:', addRoleError);
-        interaction.reply('Error adding typeracist role. Check bot permissions.');
+        interaction.reply("Couldn't add typeracist role. Perms issue.");
     }
 };
 

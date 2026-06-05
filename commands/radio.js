@@ -26,7 +26,7 @@ function registerRadioListeners(client) {
     if (client._radioListenersRegistered) return;
     client._radioListenersRegistered = true;
 
-    client.lavalink.on("trackEnd", async (player, track, reason) => {
+    const onTrackEnd = async (player, track, reason) => {
         if (!player.isRadio || !player.radioStation) return;
         if (reason === "replaced" || reason === "stopped") return;
 
@@ -38,7 +38,7 @@ function registerRadioListeners(client) {
         if (player.radioRetried) {
             console.log(`[radio] Stream failed twice for ${station.name} in ${player.guildId}, disconnecting.`);
             if (textChannel) {
-                textChannel.send(`📻 **${station.name}** yhteys katkeili liikaa — lähdettiin kanavalta.`).catch(() => {});
+                textChannel.send(`**${station.name}** kept disconnecting, we out`).catch(() => {});
             }
             player.isRadio = false;
             player.radioStation = null;
@@ -49,7 +49,7 @@ function registerRadioListeners(client) {
 
         console.log(`[radio] Stream ended unexpectedly for ${station.name}, retrying in ${RETRY_DELAY / 1000}s...`);
         if (textChannel) {
-            textChannel.send(`📻 **${station.name}** yhteys katkesi, yritetään uudelleen ${RETRY_DELAY / 1000} sekunnin kuluttua...`).catch(() => {});
+            textChannel.send(`**${station.name}** dropped, retrying in ${RETRY_DELAY / 1000}s...`).catch(() => {});
         }
 
         player.radioRetried = true;
@@ -62,7 +62,7 @@ function registerRadioListeners(client) {
             if (!success) {
                 console.log(`[radio] Retry failed for ${station.name} in ${p.guildId}, disconnecting.`);
                 if (textChannel) {
-                    textChannel.send(`📻 **${station.name}** uudelleenyritys epäonnistui — lähdettiin kanavalta.`).catch(() => {});
+                    textChannel.send(`**${station.name}** retry failed, leaving`).catch(() => {});
                 }
                 p.isRadio = false;
                 p.radioStation = null;
@@ -70,20 +70,30 @@ function registerRadioListeners(client) {
                 await p.destroy();
             } else {
                 if (textChannel) {
-                    textChannel.send(`✅ **${station.name}** yhteys palautettu!`).catch(() => {});
+                    textChannel.send(`**${station.name}** we're back!`).catch(() => {});
                 }
             }
         }, RETRY_DELAY);
-    });
+    };
 
-    client.lavalink.on("trackError", async (player, track, error) => {
+    const onTrackError = async (player, track, error) => {
         if (!player.isRadio || !player.radioStation) return;
 
         const station = STATIONS[player.radioStation];
         if (!station) return;
 
         console.error(`[radio] trackError for ${station.name}:`, error);
-    });
+    };
+
+    client.lavalink.on("trackEnd", onTrackEnd);
+    client.lavalink.on("trackError", onTrackError);
+
+    client._radioCleanup = () => {
+        client.lavalink.removeListener("trackEnd", onTrackEnd);
+        client.lavalink.removeListener("trackError", onTrackError);
+        client._radioListenersRegistered = false;
+        client._radioCleanup = null;
+    };
 }
 
 async function radio(interaction, options, client) {
@@ -94,13 +104,13 @@ async function radio(interaction, options, client) {
     const station = STATIONS[stationKey];
 
     if (!station) {
-        return interaction.editReply({ content: "❌ Tuntematon radiokanava!", ephemeral: true });
+        return interaction.editReply({ content: "❌ The fuck is that station?", ephemeral: true });
     }
 
     const voiceChannel = interaction.member?.voice?.channel;
     if (!voiceChannel) {
         return interaction.editReply({
-            content: "❌ Liity ensin voice-kanavalle!",
+            content: "❌ Get in a voice channel first",
             ephemeral: true,
         });
     }
@@ -108,7 +118,7 @@ async function radio(interaction, options, client) {
     const permissions = voiceChannel.permissionsFor(interaction.guild.members.me);
     if (!permissions.has("Connect") || !permissions.has("Speak")) {
         return interaction.editReply({
-            content: "❌ Minulla ei ole oikeuksia liittyä tai puhua kanavallasi!",
+            content: "❌ I don't have perms to join or speak in your channel",
             ephemeral: true,
         });
     }
@@ -147,16 +157,16 @@ async function radio(interaction, options, client) {
 
         if (!success) {
             return interaction.editReply({
-                content: `❌ ${station.name}:n lataaminen epäonnistui (**${station.name}**). Tarkista stream URL.`,
+                content: `❌ Couldn't load **${station.name}**. Stream URL might be cucked.`,
             });
         }
 
         const embed = new EmbedBuilder()
             .setColor(station.color)
-            .setTitle(`${station.emoji} Radio käynnissä`)
-            .setDescription(`Kuunnellaan **${station.name}** 🎶`)
-            .addFields({ name: "Kanava", value: voiceChannel.name, inline: true })
-            .setFooter({ text: "Pysäytä radio komennolla /stop tai /skip" })
+            .setTitle(`Radio is live`)
+            .setDescription(`Tuned into **${station.name}**`)
+            .addFields({ name: "Channel", value: voiceChannel.name, inline: true })
+            .setFooter({ text: "Stop the radio with /stop or /skip" })
             .setTimestamp();
 
         if (station.thumbnail) {
@@ -168,7 +178,7 @@ async function radio(interaction, options, client) {
     } catch (error) {
         console.error("[radio] Error:", error);
         return interaction.editReply({
-            content: `❌ Virhe radion käynnistämisessä: ${error.message}`,
+            content: `❌ Couldn't start radio: ${error.message}`,
         });
     }
 }
